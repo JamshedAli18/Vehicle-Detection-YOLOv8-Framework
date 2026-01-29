@@ -1,19 +1,21 @@
 import streamlit as st
-import cv2
 import numpy as np
 from PIL import Image
 from ultralytics import YOLO
-import tempfile
 import os
 
+# -----------------------
 # Page configuration
+# -----------------------
 st.set_page_config(
     page_title="Vehicle Detection System",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
+# -----------------------
 # Custom CSS for better styling
+# -----------------------
 st.markdown("""
     <style>
     .main {
@@ -45,9 +47,11 @@ st.markdown("""
         margin: 0.5rem 0;
     }
     </style>
-    """, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
+# -----------------------
 # Load model
+# -----------------------
 @st.cache_resource
 def load_model():
     try:
@@ -57,16 +61,16 @@ def load_model():
         st.error(f"Model loading error: {str(e)}")
         return None
 
+# -----------------------
 # Process image and run inference
+# -----------------------
 def process_image(image, model, conf_threshold, img_size):
-    # Convert PIL to RGB if it has alpha channel or is in different mode
+    # Ensure RGB
     if image.mode != 'RGB':
         image = image.convert('RGB')
     
-    # Convert PIL to numpy array
     img_array = np.array(image)
     
-    # Run inference with verbose output
     results = model.predict(
         img_array, 
         conf=conf_threshold,
@@ -74,15 +78,14 @@ def process_image(image, model, conf_threshold, img_size):
         verbose=False
     )
     
-    # Get annotated image
-    annotated_img = results[0].plot()
-    
-    # Convert BGR to RGB
-    annotated_img = cv2.cvtColor(annotated_img, cv2.COLOR_BGR2RGB)
+    # Annotated image is already RGB
+    annotated_img = np.array(results[0].plot())
     
     return annotated_img, results[0]
 
+# -----------------------
 # Main app
+# -----------------------
 def main():
     st.title("Vehicle Detection System")
     st.markdown("---")
@@ -143,7 +146,6 @@ def main():
     )
     
     if uploaded_file is not None:
-        # Create two columns
         col1, col2 = st.columns(2)
         
         # Display original image
@@ -152,23 +154,19 @@ def main():
             image = Image.open(uploaded_file)
             st.image(image, use_container_width=True)
             
-            # Show image info
             width, height = image.size
             st.caption(f"Size: {width}x{height} | Mode: {image.mode}")
-            
             if width < 640 or height < 640:
                 st.warning("Image is small. Consider using a larger image for better detection.")
         
         # Process and display results
         with col2:
             st.subheader("Detection Results")
-            
             with st.spinner("Detecting vehicles..."):
                 try:
                     annotated_img, results = process_image(image, model, conf_threshold, img_size)
                     st.image(annotated_img, use_container_width=True)
                     
-                    # Show detection count
                     total_detections = len(results.boxes)
                     if total_detections > 0:
                         st.success(f"Detected {total_detections} vehicle(s)")
@@ -181,32 +179,26 @@ def main():
                     st.code(traceback.format_exc())
                     return
         
-        # Display detection statistics
+        # Detection statistics
         st.markdown("---")
-        
         if len(results.boxes) > 0:
             st.subheader("Detection Statistics")
-            
-            # Count detections by class
             class_counts = {}
             for box in results.boxes:
                 class_id = int(box.cls.cpu().numpy())
                 class_name = model.names[class_id]
                 class_counts[class_name] = class_counts.get(class_name, 0) + 1
             
-            # Display total count
             st.markdown(f"**Total Vehicles Detected: {len(results.boxes)}**")
             
-            # Display statistics in columns
             cols = st.columns(min(4, len(class_counts)))
             for idx, (class_name, count) in enumerate(class_counts.items()):
                 with cols[idx % len(cols)]:
                     st.metric(label=class_name.capitalize(), value=count)
             
-            # Detailed detection table
+            # Detailed table
             st.markdown("---")
             st.subheader("Detailed Detections")
-            
             detection_data = []
             for idx, box in enumerate(results.boxes):
                 class_id = int(box.cls.cpu().numpy())
@@ -221,38 +213,25 @@ def main():
                     "Confidence": f"{confidence:.1%}",
                     "Box Size": f"{int(width_box)}x{int(height_box)}"
                 })
-            
             st.table(detection_data)
-            
         else:
             st.warning("No vehicles detected in this image.")
-            
             with st.expander("Troubleshooting"):
                 st.markdown("""
                 **Why no detections?**
                 
-                1. **Lower the confidence threshold** - Try reducing it to 0.10 or 0.05
-                2. **Image quality** - Your image is 168x299 pixels, which is quite small
-                3. **Image content** - Make sure the image contains vehicles
-                4. **Lighting** - Poor lighting can affect detection
-                5. **Try a different image** - Use a clear photo with visible vehicles
+                1. **Lower the confidence threshold**
+                2. **Image quality** - use larger images
+                3. **Image content** - must contain vehicles
+                4. **Lighting** - poor lighting affects detection
+                5. **Try a different image**
                 
                 **Vehicle types this model can detect:**
-                - Auto (Auto-rickshaw)
-                - Bus
-                - Car
-                - LCV (Light Commercial Vehicle)
-                - Motorcycle
-                - Multiaxle (Large trucks)
-                - Tractor
-                - Truck
+                - Auto, Bus, Car, LCV, Motorcycle, Multiaxle, Tractor, Truck
                 """)
     
     else:
-        # Display placeholder when no image is uploaded
         st.markdown("<p class='upload-text'>Please upload an image to begin detection</p>", unsafe_allow_html=True)
-        
-        # Add example of what to upload
         st.markdown("---")
         st.subheader("What to upload?")
         col1, col2, col3 = st.columns(3)
@@ -272,5 +251,8 @@ def main():
             st.markdown("- Multiple vehicles OK")
             st.markdown("- Adjust settings in sidebar")
 
+# -----------------------
+# Run app
+# -----------------------
 if __name__ == "__main__":
     main()
